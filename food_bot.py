@@ -113,6 +113,19 @@ async def main():
     print("🤖 Бот запущен...")
     await app.run_polling()
 
+import asyncio
+import time
+
 if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        if "already running" in str(e):
+            loop = asyncio.get_event_loop()
+            loop.create_task(main())
+            # Держим программу живой, иначе процесс завершится
+            while True:
+                time.sleep(3600)
+        else:
+            raise
+

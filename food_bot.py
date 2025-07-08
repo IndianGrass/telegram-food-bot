@@ -11,7 +11,7 @@ from telegram.ext import (
     ContextTypes, filters
 )
 
-TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменной окружения
+TOKEN = os.getenv("BOT_TOKEN")
 
 MENU = {
     "🍳 Завтрак": {
@@ -115,10 +115,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "Старт":
         await update.message.reply_text("Выбери категорию меню:", reply_markup=category_keyboard())
+
     elif text == "Стоп":
         await update.message.reply_text("Бот остановлен. Для старта нажми 'Старт'.", reply_markup=None)
+
     elif text == "🔙 Назад":
         await update.message.reply_text("Вернулись в главное меню.", reply_markup=get_main_keyboard())
+
     elif text == "🧺 Корзина":
         items = user_baskets.get(user_id, [])
         if not items:
@@ -128,9 +131,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_resp = "🧺 Ваш заказ:\n" + "\n".join(f"• {item}" for item in items)
             text_resp += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
             await update.message.reply_text(text_resp)
+
     elif text == "🗑️ Очистить корзину":
         user_baskets[user_id] = []
         await update.message.reply_text("🗑️ Корзина очищена.")
+
     elif text == "📜 История заказов":
         hist = order_history.get(user_id, [])
         if not hist:
@@ -138,18 +143,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             text_resp = "📜 Ваша история заказов:\n" + "\n".join(hist)
             await update.message.reply_text(text_resp)
+
     elif text == "🔥 ТОП заказчиков":
         top_users = []
         for uid, basket in order_history.items():
             kisses_total, hugs_total = count_total(basket)
             top_users.append((uid, kisses_total, hugs_total))
-        top_users.sort(key=lambda x: (x[1]+x[2]), reverse=True)
-        text_resp = "🔥 ТОП заказчиков:\n"
-        for i, (uid, kisses_t, hugs_t) in enumerate(top_users[:10], 1):
-            text_resp += f"{i}. Пользователь {uid}: 💋 {kisses_t}, 🤗 {hugs_t}\n"
+        top_users.sort(key=lambda x: (x[1] + x[2]), reverse=True)
         if not top_users:
-            text_resp = "Пока никто не сделал заказов."
-        await update.message.reply_text(text_resp)
+            await update.message.reply_text("Пока никто не сделал заказов.")
+        else:
+            text_resp = "🔥 ТОП заказчиков:\n"
+            for i, (uid, kisses_t, hugs_t) in enumerate(top_users[:10], 1):
+                text_resp += f"{i}. Пользователь {uid}: 💋 {kisses_t}, 🤗 {hugs_t}\n"
+            await update.message.reply_text(text_resp)
+
     elif text in MENU.keys():
         if text == "🥣 Обед":
             keyboard = ReplyKeyboardMarkup(
@@ -162,8 +170,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if isinstance(dishes, dict):
                 keyboard = submenu_keyboard(dishes)
                 await update.message.reply_text(f"Выберите блюдо из {text}:", reply_markup=keyboard)
-            else:
-                await update.message.reply_text("Ошибка структуры меню.")
+
+    elif text == "Первое":
+        submenu = MENU["🥣 Обед"]["Первое"]
+        keyboard = submenu_keyboard(submenu)
+        await update.message.reply_text("Выберите блюдо из Первого:", reply_markup=keyboard)
+
+    elif text == "Второе":
+        submenu = MENU["🥣 Обед"]["Второе"]
+        keyboard = submenu_keyboard(submenu)
+        await update.message.reply_text("Выберите блюдо из Второго:", reply_markup=keyboard)
+
     elif text in MENU.get("🥣 Обед", {}).get("Первое", {}):
         dish = text
         price, meme_url = MENU["🥣 Обед"]["Первое"][dish]
@@ -171,6 +188,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_baskets.setdefault(user_id, []).append(item_str)
         order_history.setdefault(user_id, []).append(item_str)
         await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+
     elif text in MENU.get("🥣 Обед", {}).get("Второе", {}):
         dish = text
         price, meme_url = MENU["🥣 Обед"]["Второе"][dish]
@@ -178,12 +196,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_baskets.setdefault(user_id, []).append(item_str)
         order_history.setdefault(user_id, []).append(item_str)
         await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+
     else:
         found = False
         for cat, dishes in MENU.items():
             if isinstance(dishes, dict):
-                for dish, (price, meme_url) in dishes.items():
-                    if dish == text:
+                for dish, value in dishes.items():
+                    if isinstance(value, tuple) and dish == text:
+                        price, meme_url = value
                         item_str = f"{dish} — {price}"
                         user_baskets.setdefault(user_id, []).append(item_str)
                         order_history.setdefault(user_id, []).append(item_str)
@@ -204,7 +224,4 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
-    import nest_asyncio
-    nest_asyncio.apply()
     asyncio.run(main())

@@ -4,15 +4,13 @@ import nest_asyncio
 nest_asyncio.apply()
 
 import asyncio
-from telegram import (
-    Update, ReplyKeyboardMarkup, KeyboardButton
-)
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters
 )
 
-TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменной окружения
+TOKEN = os.getenv("BOT_TOKEN")
 
 MENU = {
     "🍳 Завтрак": {
@@ -103,6 +101,16 @@ def count_total(items):
                 pass
     return kisses, hugs
 
+async def check_memes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        files = os.listdir("memes")
+        if files:
+            await update.message.reply_text("Мемы в папке memes:\n" + "\n".join(files))
+        else:
+            await update.message.reply_text("Папка memes пуста.")
+    except Exception as e:
+        await update.message.reply_text(f"Ошибка: {e}")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Привет! Нажми 'Старт' чтобы открыть меню, или 'Стоп' чтобы остановить бота.",
@@ -114,14 +122,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.first_name or str(user_id)
     text = update.message.text
 
-    def send_random_meme(item_str):
-        meme_files = [f for f in os.listdir("memes") if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    async def send_random_meme(item_str):
+        memes_folder = "memes"
+        try:
+            meme_files = [f for f in os.listdir(memes_folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+        except FileNotFoundError:
+            meme_files = []
         if meme_files:
-            meme_path = os.path.join("memes", random.choice(meme_files))
+            meme_path = os.path.join(memes_folder, random.choice(meme_files))
             with open(meme_path, "rb") as photo:
-                return update.message.reply_photo(photo, caption=f"✅ Добавлено в корзину: {item_str}")
+                await update.message.reply_photo(photo, caption=f"✅ Добавлено в корзину: {item_str}")
         else:
-            return update.message.reply_text(f"✅ Добавлено в корзину: {item_str}")
+            await update.message.reply_text(f"✅ Добавлено в корзину: {item_str}")
 
     if text == "Старт":
         await update.message.reply_text("Выбери категорию меню:", reply_markup=category_keyboard())
@@ -219,6 +231,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("check_memes", check_memes))  # Команда для проверки мемов
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🤖 Бот запущен...")

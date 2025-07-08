@@ -105,8 +105,15 @@ async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📋 Все заказы:\n"
     for user_id, basket in user_baskets.items():
         user_info = users.get(user_id)
-        if user_info:
-            name = user_info["username"] or user_info["first_name"] or f"ID {user_id}"
+        if not user_info:
+            # Попробуем получить из Telegram, если не зарегистрирован
+            member = await context.bot.get_chat_member(update.effective_chat.id, user_id)
+            username = member.user.username
+            first_name = member.user.first_name
+            user_info = {"username": username, "first_name": first_name}
+            users[user_id] = user_info
+
+        name = user_info.get("username") or user_info.get("first_name") or f"ID {user_id}"user_info["username"] or user_info["first_name"] or f"ID {user_id}"
         else:
             name = f"ID {user_id}"
 
@@ -128,6 +135,12 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Регистрируем пользователя
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    first_name = update.effective_user.first_name
+    if user_id not in users:
+        users[user_id] = {"username": username, "first_name": first_name}
     user_id = update.effective_user.id
     username = update.effective_user.username
     first_name = update.effective_user.first_name

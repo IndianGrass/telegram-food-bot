@@ -40,9 +40,15 @@ def count_total(basket_items):
     kisses, hugs = 0, 0
     for item in basket_items:
         if "поцелуйчик" in item:
-            kisses += int(item.split()[1])
+            try:
+                kisses += int(item.split()[1])
+            except:
+                pass
         elif "обнимашк" in item:
-            hugs += int(item.split()[1])
+            try:
+                hugs += int(item.split()[1])
+            except:
+                pass
     return kisses, hugs
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -111,21 +117,15 @@ async def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("🤖 Бот запущен...")
-    await app.run_polling()
 
-import asyncio
-import time
+    # Запуск бота по частям, чтобы избежать закрытия уже запущенного event loop
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
+    await app.stop()
+    await app.shutdown()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "already running" in str(e):
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
-            # Держим программу живой, иначе процесс завершится
-            while True:
-                time.sleep(3600)
-        else:
-            raise
-
+    import asyncio
+    asyncio.run(main())

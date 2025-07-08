@@ -118,7 +118,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Запуск бота
 if __name__ == "__main__":
-    app = Application.builder().token("7864140185:AAHMykk3v7acvqDeZ-Oq9GAjk1H4stkkNWM").build()
+    app = Application.builder().token("7864140185:AAHJAg-aEkxT0J4KSHeSJcleuGYDOZ7_1UY").build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("basket", basket))

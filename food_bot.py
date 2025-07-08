@@ -114,8 +114,5 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        loop.create_task(main())
-    else:
-        loop.run_until_complete(main())
+    import asyncio
+    asyncio.run(main())

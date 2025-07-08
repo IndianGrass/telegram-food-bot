@@ -1,58 +1,59 @@
 import os
+import random
 import nest_asyncio
 nest_asyncio.apply()
 
 import asyncio
 from telegram import (
-    Update, ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+    Update, ReplyKeyboardMarkup, KeyboardButton
 )
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
     ContextTypes, filters
 )
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменной окружения
 
 MENU = {
     "🍳 Завтрак": {
-        "Яичница": ("1 поцелуйчик", "https://i.imgur.com/0f7QyKx.jpg"),
-        "Кофе": ("1 обнимашка", "https://i.imgur.com/LzAxGhr.jpg"),
-        "Омлет": ("2 поцелуйчика", "https://i.imgur.com/H07v27c.jpg"),
-        "Шоколадка": ("3 обнимашки", "https://i.imgur.com/DqkshM6.jpg"),
-        "Печенье": ("2 поцелуйчика", "https://i.imgur.com/mj0xFvl.jpg"),
-        "Йогурт": ("1 обнимашка", "https://i.imgur.com/pm7ZwwF.jpg"),
-        "Творог": ("1 поцелуйчик", "https://i.imgur.com/tYl6vhR.jpg"),
-        "Чай,чай-выручай": ("1 обнимашка", "https://i.imgur.com/svQno44.jpg")
+        "Яичница": ("1 поцелуйчик", ),
+        "Кофе": ("1 обнимашка", ),
+        "Омлет": ("2 поцелуйчика", ),
+        "Шоколадка": ("3 обнимашки", ),
+        "Печенье": ("2 поцелуйчика", ),
+        "Йогурт": ("1 обнимашка", ),
+        "Творог": ("1 поцелуйчик", ),
+        "Чай с мемами-котиками": ("1 обнимашка", )
     },
     "🥣 Обед": {
         "Первое": {
-            "Борщ": ("2 поцелуйчика", "https://i.imgur.com/kEYs60V.jpg"),
-            "Гороховый суп": ("1 поцелуйчик", "https://i.imgur.com/NmEjZqA.jpg"),
-            "Супец из Дыни": ("3 обнимашки", "https://i.imgur.com/gSLT2Kp.jpg")
+            "Борщ": ("2 поцелуйчика", ),
+            "Гороховый суп": ("1 поцелуйчик", ),
+            "Супец из Дыни": ("3 обнимашки", )
         },
         "Второе": {
-            "Рис": ("2 поцелуйчика", "https://i.imgur.com/YzmXS2p.jpg"),
-            "Овощи": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
-            "Гречка": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
-            "Спагетти": ("3 поцелуйчика", "https://i.imgur.com/r4lYb8R.jpg"),
-            "Жаренная картошечка": ("3 поцелуйчика", "https://i.imgur.com/Bsp37fz.jpg"),
-            "Рыбка": ("3 обнимашки", "https://i.imgur.com/IfUpnWn.jpg")
+            "Рис": ("2 поцелуйчика", ),
+            "Овощи": ("2 обнимашки", ),
+            "Гречка": ("2 обнимашки", ),
+            "Спагетти": ("3 поцелуйчика", ),
+            "Жаренная картошечка": ("3 поцелуйчика", ),
+            "Рыбка": ("3 обнимашки", )
         }
     },
     "🌙 Ужин": {
-        "Рис": ("2 поцелуйчика", "https://i.imgur.com/YzmXS2p.jpg"),
-        "Овощи": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
-        "Гречка": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
-        "Спагетти": ("3 поцелуйчика", "https://i.imgur.com/r4lYb8R.jpg"),
-        "Жаренная картошечка": ("3 поцелуйчика", "https://i.imgur.com/Bsp37fz.jpg"),
-        "Рыбка": ("3 обнимашки", "https://i.imgur.com/IfUpnWn.jpg")
+        "Рис": ("2 поцелуйчика", ),
+        "Овощи": ("2 обнимашки", ),
+        "Гречка": ("2 обнимашки", ),
+        "Спагетти": ("3 поцелуйчика", ),
+        "Жаренная картошечка": ("3 поцелуйчика", ),
+        "Рыбка": ("3 обнимашки", )
     },
     "🍕 \"Полезная еда\"": {
-        "Пицца": ("1 обнимашка и 3 поцелуя", "https://i.imgur.com/w9L62vK.jpg"),
-        "Чипсики": ("3 поцелуя", "https://i.imgur.com/gd3HbXr.jpg"),
-        "Пивасик": ("1 поцелуй", "https://i.imgur.com/j6Z9vR2.jpg"),
-        "Вино": ("10 поцелуев и 2 обнимашки", "https://i.imgur.com/kG7UMbH.jpg"),
-        "Сходить в рестик": ("50 поцелуйчиков", "https://i.imgur.com/6DLbdx8.jpg")
+        "Пицца": ("1 обнимашка и 3 поцелуя", ),
+        "Чипсики": ("3 поцелуя", ),
+        "Пивасик": ("1 поцелуй", ),
+        "Вино": ("10 поцелуев и 2 обнимашки", ),
+        "Сходить в рестик": ("50 поцелуйчиков", )
     }
 }
 
@@ -113,6 +114,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or update.effective_user.first_name or str(user_id)
     text = update.message.text
 
+    def send_random_meme(item_str):
+        meme_files = [f for f in os.listdir("memes") if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+        if meme_files:
+            meme_path = os.path.join("memes", random.choice(meme_files))
+            with open(meme_path, "rb") as photo:
+                return update.message.reply_photo(photo, caption=f"✅ Добавлено в корзину: {item_str}")
+        else:
+            return update.message.reply_text(f"✅ Добавлено в корзину: {item_str}")
+
     if text == "Старт":
         await update.message.reply_text("Выбери категорию меню:", reply_markup=category_keyboard())
 
@@ -150,13 +160,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             kisses_total, hugs_total = count_total(basket)
             top_users.append((uid, kisses_total, hugs_total))
         top_users.sort(key=lambda x: (x[1] + x[2]), reverse=True)
+        text_resp = "🔥 ТОП заказчиков:\n"
+        for i, (uid, kisses_t, hugs_t) in enumerate(top_users[:10], 1):
+            text_resp += f"{i}. Пользователь {uid}: 💋 {kisses_t}, 🤗 {hugs_t}\n"
         if not top_users:
-            await update.message.reply_text("Пока никто не сделал заказов.")
-        else:
-            text_resp = "🔥 ТОП заказчиков:\n"
-            for i, (uid, kisses_t, hugs_t) in enumerate(top_users[:10], 1):
-                text_resp += f"{i}. Пользователь {uid}: 💋 {kisses_t}, 🤗 {hugs_t}\n"
-            await update.message.reply_text(text_resp)
+            text_resp = "Пока никто не сделал заказов."
+        await update.message.reply_text(text_resp)
 
     elif text in MENU.keys():
         if text == "🥣 Обед":
@@ -170,44 +179,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if isinstance(dishes, dict):
                 keyboard = submenu_keyboard(dishes)
                 await update.message.reply_text(f"Выберите блюдо из {text}:", reply_markup=keyboard)
-
-    elif text == "Первое":
-        submenu = MENU["🥣 Обед"]["Первое"]
-        keyboard = submenu_keyboard(submenu)
-        await update.message.reply_text("Выберите блюдо из Первого:", reply_markup=keyboard)
-
-    elif text == "Второе":
-        submenu = MENU["🥣 Обед"]["Второе"]
-        keyboard = submenu_keyboard(submenu)
-        await update.message.reply_text("Выберите блюдо из Второго:", reply_markup=keyboard)
+            else:
+                await update.message.reply_text("Ошибка структуры меню.")
 
     elif text in MENU.get("🥣 Обед", {}).get("Первое", {}):
         dish = text
-        price, meme_url = MENU["🥣 Обед"]["Первое"][dish]
+        price = MENU["🥣 Обед"]["Первое"][dish][0]
         item_str = f"{dish} — {price}"
         user_baskets.setdefault(user_id, []).append(item_str)
         order_history.setdefault(user_id, []).append(item_str)
-        await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+        await send_random_meme(item_str)
 
     elif text in MENU.get("🥣 Обед", {}).get("Второе", {}):
         dish = text
-        price, meme_url = MENU["🥣 Обед"]["Второе"][dish]
+        price = MENU["🥣 Обед"]["Второе"][dish][0]
         item_str = f"{dish} — {price}"
         user_baskets.setdefault(user_id, []).append(item_str)
         order_history.setdefault(user_id, []).append(item_str)
-        await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+        await send_random_meme(item_str)
 
     else:
         found = False
         for cat, dishes in MENU.items():
             if isinstance(dishes, dict):
-                for dish, value in dishes.items():
-                    if isinstance(value, tuple) and dish == text:
-                        price, meme_url = value
+                for dish, data in dishes.items():
+                    if isinstance(data, tuple) and dish == text:
+                        price = data[0]
                         item_str = f"{dish} — {price}"
                         user_baskets.setdefault(user_id, []).append(item_str)
                         order_history.setdefault(user_id, []).append(item_str)
-                        await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+                        await send_random_meme(item_str)
                         found = True
                         break
             if found:

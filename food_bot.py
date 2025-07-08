@@ -1,13 +1,15 @@
 import os
 import random
 import nest_asyncio
+import datetime
+
 nest_asyncio.apply()
 
 import asyncio
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
-    ContextTypes, filters
+    ContextTypes, filters, CallbackQueryHandler
 )
 
 TOKEN = os.getenv("BOT_TOKEN")
@@ -55,19 +57,20 @@ MENU = {
     }
 }
 
-user_baskets = {}
-order_history = {}
+user_baskets = {}  # {user_id: ["item"]}
+order_history = {}  # {user_id: {date: ["item"]}}
+user_profiles = {}  # {user_id: {"username": ..., "first_name": ...}}
+
+def get_today():
+    return datetime.date.today().isoformat()
 
 def get_main_keyboard():
-    return ReplyKeyboardMarkup(
-        [
-            [KeyboardButton("Старт"), KeyboardButton("Стоп")],
-            [KeyboardButton("🧺 Корзина"), KeyboardButton("🗑️ Очистить корзину")],
-            [KeyboardButton("📜 История заказов")],
-            [KeyboardButton("🔥 ТОП заказчиков")]
-        ],
-        resize_keyboard=True
-    )
+    return ReplyKeyboardMarkup([
+        [KeyboardButton("Старт"), KeyboardButton("Стоп")],
+        [KeyboardButton("🧺 Корзина"), KeyboardButton("✅ Подтвердить заказ")],
+        [KeyboardButton("🗑️ Очистить корзину"), KeyboardButton("📜 История заказов")],
+        [KeyboardButton("🔥 ТОП заказчиков")]
+    ], resize_keyboard=True)
 
 def category_keyboard():
     return ReplyKeyboardMarkup(
@@ -89,51 +92,31 @@ def count_total(items):
         if len(parts) < 2:
             continue
         price_text = parts[1].strip()
-        if "обнимашка" in price_text:
-            try:
-                hugs += int(''.join(filter(str.isdigit, price_text)))
-            except:
-                pass
-        if "поцелуй" in price_text:
-            try:
-                kisses += int(''.join(filter(str.isdigit, price_text)))
-            except:
-                pass
+        kisses += sum(int(x) for x in price_text.replace('и', '').split() if 'поцел' in price_text and x.isdigit())
+        hugs += sum(int(x) for x in price_text.replace('и', '').split() if 'обним' in price_text and x.isdigit())
     return kisses, hugs
 
-async def check_memes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_random_meme(update, item_str):
+    memes_folder = "memes"
     try:
-        files = os.listdir("memes")
-        if files:
-            await update.message.reply_text("Мемы в папке memes:\n" + "\n".join(files))
-        else:
-            await update.message.reply_text("Папка memes пуста.")
-    except Exception as e:
-        await update.message.reply_text(f"Ошибка: {e}")
+        meme_files = [f for f in os.listdir(memes_folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+    except FileNotFoundError:
+        meme_files = []
+    if meme_files:
+        meme_path = os.path.join(memes_folder, random.choice(meme_files))
+        with open(meme_path, "rb") as photo:
+            await update.message.reply_photo(photo, caption=f"✅ Добавлено в корзину: {item_str}")
+    else:
+        await update.message.reply_text(f"✅ Добавлено в корзину: {item_str}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Нажми 'Старт' чтобы открыть меню, или 'Стоп' чтобы остановить бота.",
-        reply_markup=get_main_keyboard()
-    )
+    user = update.effective_user
+    user_profiles[user.id] = {"username": user.username, "first_name": user.first_name}
+    await update.message.reply_text("Привет! Нажми 'Старт' чтобы открыть меню.", reply_markup=get_main_keyboard())
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.first_name or str(user_id)
     text = update.message.text
-
-    async def send_random_meme(item_str):
-        memes_folder = "memes"
-        try:
-            meme_files = [f for f in os.listdir(memes_folder) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
-        except FileNotFoundError:
-            meme_files = []
-        if meme_files:
-            meme_path = os.path.join(memes_folder, random.choice(meme_files))
-            with open(meme_path, "rb") as photo:
-                await update.message.reply_photo(photo, caption=f"✅ Добавлено в корзину: {item_str}")
-        else:
-            await update.message.reply_text(f"✅ Добавлено в корзину: {item_str}")
 
     if text == "Старт":
         await update.message.reply_text("Выбери категорию меню:", reply_markup=category_keyboard())
@@ -151,64 +134,62 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             kisses, hugs = count_total(items)
             text_resp = "🧺 Ваш заказ:\n" + "\n".join(f"• {item}" for item in items)
-            text_resp += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
-            await update.message.reply_text(text_resp)
+            text_resp += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}\n\nВы можете удалить блюдо, нажав кнопку ниже."
+            keyboard = [[InlineKeyboardButton(f"❌ {i+1}", callback_data=f"del_{i}") for i in range(len(items))]]
+            await update.message.reply_text(text_resp, reply_markup=InlineKeyboardMarkup(keyboard))
 
     elif text == "🗑️ Очистить корзину":
         user_baskets[user_id] = []
         await update.message.reply_text("🗑️ Корзина очищена.")
 
+    elif text == "✅ Подтвердить заказ":
+        today = get_today()
+        items = user_baskets.get(user_id, [])
+        if not items:
+            await update.message.reply_text("Корзина пуста. Добавьте что-нибудь.")
+        else:
+            order_history.setdefault(user_id, {}).setdefault(today, []).extend(items)
+            user_baskets[user_id] = []
+            await update.message.reply_text("✅ Заказ подтверждён и сохранён в истории!")
+
     elif text == "📜 История заказов":
-        hist = order_history.get(user_id, [])
+        hist = order_history.get(user_id, {})
         if not hist:
             await update.message.reply_text("У вас ещё нет истории заказов.")
         else:
-            text_resp = "📜 Ваша история заказов:\n" + "\n".join(hist)
+            text_resp = "📜 Ваша история заказов:\n"
+            for date, items in hist.items():
+                text_resp += f"\n📅 {date}:\n" + "\n".join(f"• {item}" for item in items)
             await update.message.reply_text(text_resp)
 
     elif text == "🔥 ТОП заказчиков":
-        top_users = []
-        for uid, basket in order_history.items():
-            kisses_total, hugs_total = count_total(basket)
-            top_users.append((uid, kisses_total, hugs_total))
-        top_users.sort(key=lambda x: (x[1] + x[2]), reverse=True)
-        text_resp = "🔥 ТОП заказчиков:\n"
-        for i, (uid, kisses_t, hugs_t) in enumerate(top_users[:10], 1):
-            text_resp += f"{i}. Пользователь {uid}: 💋 {kisses_t}, 🤗 {hugs_t}\n"
-        if not top_users:
-            text_resp = "Пока никто не сделал заказов."
-        await update.message.reply_text(text_resp)
-
-    elif text in MENU.keys():
-        if text == "🥣 Обед":
-            keyboard = ReplyKeyboardMarkup(
-                [[KeyboardButton("Первое")], [KeyboardButton("Второе")], [KeyboardButton("🔙 Назад")]],
-                resize_keyboard=True
-            )
-            await update.message.reply_text("Выберите подкатегорию Обеда:", reply_markup=keyboard)
+        scores = []
+        for uid, days in order_history.items():
+            all_items = sum(days.values(), [])
+            kisses, hugs = count_total(all_items)
+            user = user_profiles.get(uid, {})
+            name = user.get("username") or user.get("first_name") or f"id{uid}"
+            scores.append((name, kisses, hugs))
+        scores.sort(key=lambda x: (x[1] + x[2]), reverse=True)
+        if not scores:
+            await update.message.reply_text("Пока никто не сделал заказов.")
         else:
-            dishes = MENU[text]
-            if isinstance(dishes, dict):
-                keyboard = submenu_keyboard(dishes)
-                await update.message.reply_text(f"Выберите блюдо из {text}:", reply_markup=keyboard)
-            else:
-                await update.message.reply_text("Ошибка структуры меню.")
+            resp = "🔥 ТОП заказчиков:\n"
+            for i, (name, k, h) in enumerate(scores[:10], 1):
+                resp += f"{i}. {name}: 💋 {k}, 🤗 {h}\n"
+            await update.message.reply_text(resp)
 
-    elif text in MENU.get("🥣 Обед", {}).get("Первое", {}):
-        dish = text
-        price = MENU["🥣 Обед"]["Первое"][dish][0]
-        item_str = f"{dish} — {price}"
-        user_baskets.setdefault(user_id, []).append(item_str)
-        order_history.setdefault(user_id, []).append(item_str)
-        await send_random_meme(item_str)
+    elif text == "🥣 Обед":
+        keyboard = ReplyKeyboardMarkup(
+            [[KeyboardButton("Первое")], [KeyboardButton("Второе")], [KeyboardButton("🔙 Назад")]],
+            resize_keyboard=True
+        )
+        await update.message.reply_text("Выберите подкатегорию Обеда:", reply_markup=keyboard)
 
-    elif text in MENU.get("🥣 Обед", {}).get("Второе", {}):
-        dish = text
-        price = MENU["🥣 Обед"]["Второе"][dish][0]
-        item_str = f"{dish} — {price}"
-        user_baskets.setdefault(user_id, []).append(item_str)
-        order_history.setdefault(user_id, []).append(item_str)
-        await send_random_meme(item_str)
+    elif text in ["Первое", "Второе"]:
+        dishes = MENU.get("🥣 Обед", {}).get(text, {})
+        keyboard = submenu_keyboard(dishes)
+        await update.message.reply_text(f"Выберите блюдо из раздела {text}:", reply_markup=keyboard)
 
     else:
         found = False
@@ -219,21 +200,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         price = data[0]
                         item_str = f"{dish} — {price}"
                         user_baskets.setdefault(user_id, []).append(item_str)
-                        order_history.setdefault(user_id, []).append(item_str)
-                        await send_random_meme(item_str)
+                        await send_random_meme(update, item_str)
                         found = True
                         break
-            if found:
-                break
+                if found:
+                    break
+                for subcat in dishes.values():
+                    if isinstance(subcat, dict):
+                        if text in subcat:
+                            price = subcat[text][0]
+                            item_str = f"{text} — {price}"
+                            user_baskets.setdefault(user_id, []).append(item_str)
+                            await send_random_meme(update, item_str)
+                            found = True
+                            break
+                if found:
+                    break
         if not found:
             await update.message.reply_text("❓ Не понял, выберите из меню.")
+
+async def delete_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    index = int(query.data.replace("del_", ""))
+    if user_id in user_baskets and 0 <= index < len(user_baskets[user_id]):
+        removed = user_baskets[user_id].pop(index)
+        await query.edit_message_text(f"❌ Удалено из корзины: {removed}")
 
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("check_memes", check_memes))  # Команда для проверки мемов
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
+    app.add_handler(CallbackQueryHandler(delete_item))
     print("🤖 Бот запущен...")
     await app.run_polling()
 

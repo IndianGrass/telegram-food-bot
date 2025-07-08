@@ -47,7 +47,13 @@ def start_keyboard():
 # Клавиатура с категориями меню
 def category_keyboard():
     keyboard = [[KeyboardButton(cat)] for cat in MENU.keys()]
-    keyboard.append([KeyboardButton("🧺 Корзина"), KeyboardButton("🗑️ Очистить корзину")])
+    keyboard.append([
+        KeyboardButton("🧺 Корзина"),
+        KeyboardButton("🗑️ Очистить корзину")
+    ])
+    keyboard.append([
+        KeyboardButton("📖 История заказов")
+    ])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # Подсчёт итоговой стоимости
@@ -146,6 +152,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text == "🗑️ Очистить корзину":
         await clear_basket(update, context)
+        return
+
+    elif text == "📖 История заказов":
+        await show_history(update, context)
         return
 
     elif text in MENU:

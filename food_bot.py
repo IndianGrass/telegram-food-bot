@@ -1,24 +1,13 @@
-import os
 import asyncio
-import logging
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, ContextTypes, filters
 )
 
-# Логирование
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Вставь сюда свой токен от BotFather (для проверки)
+TOKEN = "7864140185:AAHJAg-aEkxT0J4KSHeSJcleuGYDOZ7_1UY"
 
-# 🔑 Токен из переменной окружения (или впиши вручную)
-TOKEN = os.getenv("BOT_TOKEN")
-# Временно можно вставить прямо сюда (если переменная не срабатывает)
-# TOKEN = "вставь_сюда_токен_от_BotFather"
-
-# Меню
 MENU = {
     "🥣 Первое": {
         "Гороховый суп": "1 поцелуйчик",
@@ -40,16 +29,13 @@ MENU = {
     }
 }
 
-# Корзины пользователей
 user_baskets = {}
 
-# Клавиатура категорий
 def category_keyboard():
     keyboard = [[KeyboardButton(cat)] for cat in MENU.keys()]
     keyboard.append([KeyboardButton("🧺 Корзина"), KeyboardButton("🗑️ Очистить корзину")])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# Подсчёт итогов
 def count_total(basket_items):
     kisses, hugs = 0, 0
     for item in basket_items:
@@ -59,11 +45,9 @@ def count_total(basket_items):
             hugs += int(item.split()[1])
     return kisses, hugs
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Выбери категорию меню 👇", reply_markup=category_keyboard())
 
-# Показать корзину
 async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     items = user_baskets.get(user_id, [])
@@ -75,13 +59,11 @@ async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
         await update.message.reply_text(text)
 
-# Очистить корзину
 async def clear_basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_baskets[user_id] = []
     await update.message.reply_text("🗑️ Корзина очищена.")
 
-# Все заказы
 async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_baskets:
         await update.message.reply_text("Пока никто ничего не заказал.")
@@ -95,12 +77,11 @@ async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n{name}:\n{orders}\n{summary}\n"
     await update.message.reply_text(text)
 
-# Обработка всех сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
 
-    print(f"Получено сообщение от {user_id}: {text}")  # Для логов
+    print(f"Получено сообщение от {user_id}: {text}")  # Лог для проверки
 
     if text == "🔙 Назад":
         await start(update, context)
@@ -123,7 +104,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         await update.message.reply_text("❓ Не понял. Выбери из меню.")
 
-# Основной запуск
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
@@ -139,18 +119,9 @@ async def main():
     await app.start()
     await app.updater.start_polling()
 
-    # ✨ Важно: не даём Railway завершить контейнер
+    # Заставляем контейнер работать постоянно
     loop = asyncio.get_event_loop()
     loop.run_forever()
 
-# Запуск
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError as e:
-        if "already running" in str(e):
-            loop = asyncio.get_event_loop()
-            loop.create_task(main())
-            loop.run_forever()
-        else:
-            raise
+    asyncio.run(main())

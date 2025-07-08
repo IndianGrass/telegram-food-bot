@@ -1,2 +1,2 @@
 #!/bin/bash
-python food_bot.py
+python3 food_bot.py

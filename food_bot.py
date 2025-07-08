@@ -1,5 +1,9 @@
+import os
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters
+)
 
 MENU = {
     "🥣 Первое": {
@@ -26,29 +30,29 @@ user_baskets = {}
 
 def category_keyboard():
     keyboard = [[KeyboardButton(cat)] for cat in MENU.keys()]
-    keyboard.append([KeyboardButton("🧺 Корзина"), KeyboardButton("🗑️ Очистить корзину")])
+    keyboard.append([
+        KeyboardButton("🧺 Корзина"),
+        KeyboardButton("🗑️ Очистить корзину"),
+        KeyboardButton("📋 Все заказы")
+    ])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Выбери категорию меню 👇", reply_markup=category_keyboard())
+    await update.message.reply_text(
+        "Привет! Я — бот-меню. Выбери категорию блюда 👇",
+        reply_markup=category_keyboard()
+    )
 
 def count_total(basket_items):
     kisses = 0
     hugs = 0
     for item in basket_items:
-        # item example: "Гороховый суп — 1 поцелуйчик"
         if "поцелуйчик" in item:
-            try:
-                num = int(item.split('—')[1].strip().split()[0])
-                kisses += num
-            except:
-                pass
+            num = int(item.split()[1])
+            kisses += num
         elif "обнимашк" in item:
-            try:
-                num = int(item.split('—')[1].strip().split()[0])
-                hugs += num
-            except:
-                pass
+            num = int(item.split()[1])
+            hugs += num
     return kisses, hugs
 
 async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,11 +78,10 @@ async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "📋 Все заказы:\n"
     for user_id, basket in user_baskets.items():
-        name = f"👤 Пользователь {user_id}"
         kisses, hugs = count_total(basket)
         orders = "\n".join(f"   • {item}" for item in basket)
         summary = f"   💋 {kisses} поцелуйчиков, 🤗 {hugs} обнимашек"
-        text += f"\n{name}:\n{orders}\n{summary}\n"
+        text += f"\n👤 Пользователь {user_id}:\n{orders}\n{summary}\n"
     await update.message.reply_text(text)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -95,6 +98,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "🗑️ Очистить корзину":
         await clear_basket(update, context)
+        return
+
+    if text == "📋 Все заказы":
+        await all_orders(update, context)
         return
 
     if text in MENU:
@@ -115,13 +122,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❓ Не понял. Выбери из меню.")
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token("7864140185:AAHJAg-aEkxT0J4KSHeSJcleuGYDOZ7_1UY").build()
+    import asyncio
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("basket", basket))
-    app.add_handler(CommandHandler("clear", clear_basket))
-    app.add_handler(CommandHandler("allorders", all_orders))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    async def main():
+        token = os.getenv("BOT_TOKEN")
+        if not token:
+            print("❌ Ошибка: переменная окружения BOT_TOKEN не найдена")
+            return
 
-    print("Бот запущен...")
-    app.run_polling()
+        app = ApplicationBuilder().token(token).build()
+
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("basket", basket))
+        app.add_handler(CommandHandler("clear", clear_basket))
+        app.add_handler(CommandHandler("allorders", all_orders))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+        print("🤖 Бот запущен...")
+        await app.run_polling()
+
+    asyncio.run(main())

@@ -57,8 +57,8 @@ MENU = {
     }
 }
 
-user_baskets = {}  # {user_id: ["item"]}
-order_history = {}  # {user_id: {date: ["item"]}}
+user_baskets = {}  # {user_id: [items]}
+order_history = {}  # {user_id: {date: [items]}}
 user_profiles = {}  # {user_id: {"username": ..., "first_name": ...}}
 
 def get_today():
@@ -92,8 +92,18 @@ def count_total(items):
         if len(parts) < 2:
             continue
         price_text = parts[1].strip()
-        kisses += sum(int(x) for x in price_text.replace('и', '').split() if 'поцел' in price_text and x.isdigit())
-        hugs += sum(int(x) for x in price_text.replace('и', '').split() if 'обним' in price_text and x.isdigit())
+        # Считаем поцелуи
+        for word in price_text.split():
+            if "поцел" in word:
+                num = ''.join(filter(str.isdigit, word))
+                if num.isdigit():
+                    kisses += int(num)
+        # Считаем обнимашки
+        for word in price_text.split():
+            if "обним" in word:
+                num = ''.join(filter(str.isdigit, word))
+                if num.isdigit():
+                    hugs += int(num)
     return kisses, hugs
 
 async def send_random_meme(update, item_str):
@@ -179,35 +189,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resp += f"{i}. {name}: 💋 {k}, 🤗 {h}\n"
             await update.message.reply_text(resp)
 
-    elif text == "🥣 Обед":
-        keyboard = ReplyKeyboardMarkup(
-            [[KeyboardButton("Первое")], [KeyboardButton("Второе")], [KeyboardButton("🔙 Назад")]],
-            resize_keyboard=True
-        )
-        await update.message.reply_text("Выберите подкатегорию Обеда:", reply_markup=keyboard)
+    # Выбор категории меню
+    elif text in MENU.keys():
+        if text == "🥣 Обед":
+            keyboard = ReplyKeyboardMarkup(
+                [[KeyboardButton("Первое")], [KeyboardButton("Второе")], [KeyboardButton("🔙 Назад")]],
+                resize_keyboard=True
+            )
+            await update.message.reply_text("Выберите подкатегорию Обеда:", reply_markup=keyboard)
+        else:
+            dishes = MENU[text]
+            keyboard = submenu_keyboard(dishes)
+            await update.message.reply_text(f"Выберите блюдо из категории {text}:", reply_markup=keyboard)
 
+    # Подкатегории обеда
     elif text in ["Первое", "Второе"]:
-        dishes = MENU.get("🥣 Обед", {}).get(text, {})
+        dishes = MENU["🥣 Обед"].get(text, {})
         keyboard = submenu_keyboard(dishes)
         await update.message.reply_text(f"Выберите блюдо из раздела {text}:", reply_markup=keyboard)
 
+    # Выбор блюда (учитываем вложенность)
     else:
         found = False
         for cat, dishes in MENU.items():
             if isinstance(dishes, dict):
-                for dish, data in dishes.items():
-                    if isinstance(data, tuple) and dish == text:
-                        price = data[0]
-                        item_str = f"{dish} — {price}"
+                # Прямые блюда в категории (Завтрак, Ужин, Полезная еда)
+                if all(isinstance(v, tuple) for v in dishes.values()):
+                    if text in dishes:
+                        price = dishes[text][0]
+                        item_str = f"{text} — {price}"
                         user_baskets.setdefault(user_id, []).append(item_str)
                         await send_random_meme(update, item_str)
                         found = True
                         break
-                if found:
-                    break
-                for subcat in dishes.values():
-                    if isinstance(subcat, dict):
-                        if text in subcat:
+                else:
+                    # Вложенные подкатегории, например обед
+                    for subcat in dishes.values():
+                        if isinstance(subcat, dict) and text in subcat:
                             price = subcat[text][0]
                             item_str = f"{text} — {price}"
                             user_baskets.setdefault(user_id, []).append(item_str)

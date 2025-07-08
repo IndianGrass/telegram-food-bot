@@ -1,16 +1,15 @@
 import asyncio
 import os
-import random
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler,
     MessageHandler, ContextTypes, filters
 )
+from collections import defaultdict
+from datetime import datetime
 
-# Получаем токен из переменной окружения
 TOKEN = os.getenv("BOT_TOKEN")
 
-# Меню бота
 MENU = {
     "🥣 Первое": {
         "Гороховый суп": "1 поцелуйчик",
@@ -32,19 +31,10 @@ MENU = {
     }
 }
 
-# Хранилища данных пользователей
-user_baskets = {}
-user_history = {}
-users = {}  # user_id -> {username, first_name}
+user_baskets = defaultdict(list)
+order_history = defaultdict(list)
+users = {}
 
-# Клавиатура стартовая
-def start_keyboard():
-    return ReplyKeyboardMarkup(
-        [[KeyboardButton("▶️ Старт")], [KeyboardButton("⛔ Стоп")]],
-        resize_keyboard=True
-    )
-
-# Клавиатура с категориями меню
 def category_keyboard():
     keyboard = [[KeyboardButton(cat)] for cat in MENU.keys()]
     keyboard.append([
@@ -52,33 +42,31 @@ def category_keyboard():
         KeyboardButton("🗑️ Очистить корзину")
     ])
     keyboard.append([
-        KeyboardButton("📖 История заказов")
+        KeyboardButton("📖 История заказов"), KeyboardButton("✅ Оформить заказ")
+    ])
+    keyboard.append([
+        KeyboardButton("🗑️ Удалить блюдо из корзины"), KeyboardButton("🔝 ТОП заказчиков")
     ])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# Подсчёт итоговой стоимости
 def count_total(basket_items):
     kisses, hugs = 0, 0
     for item in basket_items:
-        try:
-            if "поцелуйчик" in item:
-                num = int(item.split()[-2])
-                kisses += num
-            elif "обнимашк" in item:
-                num = int(item.split()[-2])
-                hugs += num
-        except (IndexError, ValueError):
-            print(f"Не удалось распарсить: {item}")
+        if "поцелуйчик" in item:
+            try:
+                kisses += int(item.split()[1])
+            except:
+                pass
+        elif "обнимашк" in item:
+            try:
+                hugs += int(item.split()[1])
+            except:
+                pass
     return kisses, hugs
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Привет! Нажми ▶️ Старт, чтобы выбрать еду, или ⛔ Стоп, чтобы выйти.",
-        reply_markup=start_keyboard()
-    )
+    await update.message.reply_text("Привет! Выбери категорию меню 👇", reply_markup=category_keyboard())
 
-# Отображение корзины
 async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     items = user_baskets.get(user_id, [])
@@ -90,130 +78,119 @@ async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
         await update.message.reply_text(text)
 
-# Очистка корзины
 async def clear_basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_baskets[user_id] = []
     await update.message.reply_text("🗑️ Корзина очищена.")
 
-# Показ всех заказов
-async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not user_baskets:
-        await update.message.reply_text("Пока никто ничего не заказал.")
-        return
-
-    text = "📋 Все заказы:\n"
-    for user_id, basket in user_baskets.items():
-        user_info = users.get(user_id)
-        if not user_info:
-            # Попробуем получить из Telegram, если не зарегистрирован
-            member = await context.bot.get_chat_member(update.effective_chat.id, user_id)
-            username = member.user.username
-            first_name = member.user.first_name
-            user_info = {"username": username, "first_name": first_name}
-            users[user_id] = user_info
-
-        name = user_info.get("username") or user_info.get("first_name") or f"ID {user_id}"user_info["username"] or user_info["first_name"] or f"ID {user_id}"
-        else:
-            name = f"ID {user_id}"
-
-        kisses, hugs = count_total(basket)
-        orders = "\n".join(f"   • {item}" for item in basket)
-        summary = f"   💋 {kisses} поцелуйчиков, 🤗 {hugs} обнимашек"
-        text += f"\n👤 {name}:\n{orders}\n{summary}\n"
-    await update.message.reply_text(text)
-
-# Показ личной истории заказов
 async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    history = user_history.get(user_id, [])
+    history = order_history.get(user_id, [])
     if not history:
-        await update.message.reply_text("📖 У вас пока нет истории заказов.")
+        await update.message.reply_text("📭 У вас нет истории заказов.")
     else:
-        text = "📖 Ваша история заказов:\n" + "\n".join(f"• {item}" for item in history)
+        text = "📖 История заказов:\n"
+        for date, items in history:
+            text += f"📅 {date}:\n" + "\n".join(f"• {i}" for i in items) + "\n\n"
         await update.message.reply_text(text)
 
-# Обработка сообщений
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Регистрируем пользователя
+async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    username = update.effective_user.username
-    first_name = update.effective_user.first_name
-    if user_id not in users:
-        users[user_id] = {"username": username, "first_name": first_name}
-    user_id = update.effective_user.id
-    username = update.effective_user.username
-    first_name = update.effective_user.first_name
+    items = user_baskets.get(user_id, [])
+    if not items:
+        await update.message.reply_text("🧺 Сначала добавьте что-нибудь в корзину!")
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    order_history[user_id].append((today, items.copy()))
+    user_baskets[user_id] = []
+    await update.message.reply_text("✅ Заказ оформлен и сохранён в истории! 📝")
 
-    # Регистрируем пользователя
+async def delete_item_from_basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    basket = user_baskets.get(user_id, [])
+    if not basket:
+        await update.message.reply_text("🧺 Корзина пуста.")
+        return
+    keyboard = [[KeyboardButton(item)] for item in basket]
+    keyboard.append([KeyboardButton("🔙 Назад")])
+    await update.message.reply_text("Выберите, что удалить:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
+    context.user_data['delete_mode'] = True
+
+async def show_top_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stats = []
+    for uid, history in order_history.items():
+        total_kiss, total_hug = 0, 0
+        for _, items in history:
+            k, h = count_total(items)
+            total_kiss += k
+            total_hug += h
+        name = users.get(uid, {}).get("username") or users.get(uid, {}).get("first_name") or f"ID {uid}"
+        stats.append((name, total_kiss, total_hug))
+    if not stats:
+        await update.message.reply_text("Пока нет данных для ТОПа.")
+        return
+    stats.sort(key=lambda x: (x[1], x[2]), reverse=True)
+    text = "🔝 ТОП заказчиков:\n"
+    for i, (name, kiss, hug) in enumerate(stats, 1):
+        text += f"{i}. {name} — 💋 {kiss}, 🤗 {hug}\n"
+    await update.message.reply_text(text)
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    first_name = update.effective_user.first_name
     if user_id not in users:
         users[user_id] = {"username": username, "first_name": first_name}
 
     text = update.message.text
 
-    if text == "▶️ Старт":
-        await update.message.reply_text("Выберите категорию меню 👇", reply_markup=category_keyboard())
+    if context.user_data.get('delete_mode'):
+        context.user_data['delete_mode'] = False
+        if text == "🔙 Назад":
+            await start(update, context)
+            return
+        try:
+            user_baskets[user_id].remove(text)
+            await update.message.reply_text(f"❌ Удалено: {text}", reply_markup=category_keyboard())
+        except ValueError:
+            await update.message.reply_text("❌ Не удалось удалить. Попробуйте снова.", reply_markup=category_keyboard())
         return
 
-    elif text == "⛔ Стоп":
-        await update.message.reply_text("До встречи! 🍽️", reply_markup=ReplyKeyboardMarkup([[]], resize_keyboard=True))
-        return
-
+    if text == "🔙 Назад":
+        await start(update, context)
     elif text == "🧺 Корзина":
         await basket(update, context)
-        return
-
     elif text == "🗑️ Очистить корзину":
         await clear_basket(update, context)
-        return
-
     elif text == "📖 История заказов":
         await show_history(update, context)
-        return
-
+    elif text == "✅ Оформить заказ":
+        await confirm_order(update, context)
+    elif text == "🗑️ Удалить блюдо из корзины":
+        await delete_item_from_basket(update, context)
+    elif text == "🔝 ТОП заказчиков":
+        await show_top_users(update, context)
     elif text in MENU:
         dishes = MENU[text]
         keyboard = [[KeyboardButton(dish)] for dish in dishes]
-        keyboard.append([KeyboardButton("⬅️ Назад")])
+        keyboard.append([KeyboardButton("🔙 Назад")])
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(f"Выберите блюдо из категории {text}:", reply_markup=reply_markup)
-        return
-
-    elif text == "⬅️ Назад":
-        await update.message.reply_text("Вернулись в главное меню 📅", reply_markup=category_keyboard())
-        return
-
     else:
         for category, items in MENU.items():
             if text in items:
                 price = items[text]
-                user_baskets.setdefault(user_id, []).append(f"{text} — {price}")
-                user_history.setdefault(user_id, []).append(f"{text} — {price}")
+                user_baskets[user_id].append(f"{text} — {price}")
                 await update.message.reply_text(f"✅ Добавлено в корзину: {text} ({price})")
                 return
         await update.message.reply_text("❓ Не понял. Выбери из меню.")
 
-# Главная точка запуска
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("basket", basket))
-    app.add_handler(CommandHandler("clear", clear_basket))
-    app.add_handler(CommandHandler("allorders", all_orders))
-    app.add_handler(CommandHandler("history", show_history))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
     print("🤖 Бот запущен...")
-
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    try:
-        loop = asyncio.get_event_loop()
-        loop.create_task(main())
-        loop.run_forever()
-    except (KeyboardInterrupt, SystemExit):
-        print("Бот остановлен вручную.")
+    asyncio.run(main())

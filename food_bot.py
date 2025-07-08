@@ -35,6 +35,7 @@ MENU = {
 # Хранилища данных пользователей
 user_baskets = {}
 user_history = {}
+users = {}  # user_id -> {username, first_name}
 
 # Клавиатура стартовая
 def start_keyboard():
@@ -97,8 +98,12 @@ async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "📋 Все заказы:\n"
     for user_id, basket in user_baskets.items():
-        user = await context.bot.get_chat(user_id)
-        name = user.username or user.first_name or f"ID {user_id}"
+        user_info = users.get(user_id)
+        if user_info:
+            name = user_info["username"] or user_info["first_name"] or f"ID {user_id}"
+        else:
+            name = f"ID {user_id}"
+
         kisses, hugs = count_total(basket)
         orders = "\n".join(f"   • {item}" for item in basket)
         summary = f"   💋 {kisses} поцелуйчиков, 🤗 {hugs} обнимашек"
@@ -118,6 +123,13 @@ async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    username = update.effective_user.username
+    first_name = update.effective_user.first_name
+
+    # Регистрируем пользователя
+    if user_id not in users:
+        users[user_id] = {"username": username, "first_name": first_name}
+
     text = update.message.text
 
     if text == "▶️ Старт":

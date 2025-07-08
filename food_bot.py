@@ -105,6 +105,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❓ Не понял. Выбери из меню.")
 
 async def main():
+    async def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -119,9 +120,10 @@ async def main():
     await app.start()
     await app.updater.start_polling()
 
-    # Заставляем контейнер работать постоянно
-    loop = asyncio.get_event_loop()
-    loop.run_forever()
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
+        loop.run_forever()
+    except (KeyboardInterrupt, SystemExit):
+        print("Бот остановлен вручную.")

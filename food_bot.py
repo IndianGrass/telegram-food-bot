@@ -1,17 +1,18 @@
 import os
+import nest_asyncio
+nest_asyncio.apply()
+
 import asyncio
 from telegram import (
     Update, ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 )
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
-    ContextTypes, filters, CallbackQueryHandler
+    ContextTypes, filters
 )
-from telegram.constants import ParseMode
 
 TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменной окружения
 
-# Меню с категориями и блюдами с ценами и мемами (URL котиков)
 MENU = {
     "🍳 Завтрак": {
         "Яичница": ("1 поцелуйчик", "https://i.imgur.com/0f7QyKx.jpg"),
@@ -70,14 +71,12 @@ def get_main_keyboard():
     )
 
 def category_keyboard():
-    # Категории меню (завтрак, обед, ужин, полезная еда)
     return ReplyKeyboardMarkup(
         [[KeyboardButton(cat)] for cat in MENU.keys()] + [[KeyboardButton("🔙 Назад")]],
         resize_keyboard=True
     )
 
 def submenu_keyboard(submenu):
-    # Создаёт клавиатуру из словаря блюд
     return ReplyKeyboardMarkup(
         [[KeyboardButton(dish)] for dish in submenu.keys()] + [[KeyboardButton("🔙 Назад")]],
         resize_keyboard=True
@@ -87,12 +86,10 @@ def count_total(items):
     kisses = 0
     hugs = 0
     for item in items:
-        # item как "Яичница — 1 поцелуйчик"
         parts = item.split("—")
         if len(parts) < 2:
             continue
         price_text = parts[1].strip()
-        # Парсим числа из цены
         if "обнимашка" in price_text:
             try:
                 hugs += int(''.join(filter(str.isdigit, price_text)))
@@ -142,7 +139,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_resp = "📜 Ваша история заказов:\n" + "\n".join(hist)
             await update.message.reply_text(text_resp)
     elif text == "🔥 ТОП заказчиков":
-        # Подсчёт поцелуев и обнимашек по всем юзерам
         top_users = []
         for uid, basket in order_history.items():
             kisses_total, hugs_total = count_total(basket)
@@ -155,8 +151,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text_resp = "Пока никто не сделал заказов."
         await update.message.reply_text(text_resp)
     elif text in MENU.keys():
-        # Категория из основного меню
-        # Если категория Обед — два подкатегории (первое, второе)
         if text == "🥣 Обед":
             keyboard = ReplyKeyboardMarkup(
                 [[KeyboardButton("Первое")], [KeyboardButton("Второе")], [KeyboardButton("🔙 Назад")]],
@@ -164,13 +158,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await update.message.reply_text("Выберите подкатегорию Обеда:", reply_markup=keyboard)
         else:
-            # Простой список блюд в категории
             dishes = MENU[text]
             if isinstance(dishes, dict):
                 keyboard = submenu_keyboard(dishes)
                 await update.message.reply_text(f"Выберите блюдо из {text}:", reply_markup=keyboard)
             else:
-                # на всякий случай
                 await update.message.reply_text("Ошибка структуры меню.")
     elif text in MENU.get("🥣 Обед", {}).get("Первое", {}):
         dish = text
@@ -187,7 +179,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         order_history.setdefault(user_id, []).append(item_str)
         await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
     else:
-        # Поиск блюда в остальных категориях
         found = False
         for cat, dishes in MENU.items():
             if isinstance(dishes, dict):
@@ -213,4 +204,7 @@ async def main():
     await app.run_polling()
 
 if __name__ == "__main__":
+    import asyncio
+    import nest_asyncio
+    nest_asyncio.apply()
     asyncio.run(main())

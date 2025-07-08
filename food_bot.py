@@ -93,6 +93,9 @@ async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
+    
+    print(f"Получено сообщение от {user_id}: {text}")
+
 
     if text == "🔙 Назад":
         await start(update, context)

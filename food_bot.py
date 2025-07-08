@@ -1,7 +1,6 @@
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# Меню
 MENU = {
     "🥣 Первое": {
         "Гороховый суп": "1 поцелуйчик",
@@ -23,33 +22,35 @@ MENU = {
     }
 }
 
-# Корзины по пользователям
 user_baskets = {}
 
-# Клавиатура категорий
 def category_keyboard():
     keyboard = [[KeyboardButton(cat)] for cat in MENU.keys()]
     keyboard.append([KeyboardButton("🧺 Корзина"), KeyboardButton("🗑️ Очистить корзину")])
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Выбери категорию меню 👇", reply_markup=category_keyboard())
 
-# Подсчёт итогов
 def count_total(basket_items):
     kisses = 0
     hugs = 0
     for item in basket_items:
+        # item example: "Гороховый суп — 1 поцелуйчик"
         if "поцелуйчик" in item:
-            num = int(item.split()[1])
-            kisses += num
+            try:
+                num = int(item.split('—')[1].strip().split()[0])
+                kisses += num
+            except:
+                pass
         elif "обнимашк" in item:
-            num = int(item.split()[1])
-            hugs += num
+            try:
+                num = int(item.split('—')[1].strip().split()[0])
+                hugs += num
+            except:
+                pass
     return kisses, hugs
 
-# Показываем корзину
 async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     basket_items = user_baskets.get(user_id, [])
@@ -61,13 +62,11 @@ async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
         await update.message.reply_text(text)
 
-# Очистка корзины
 async def clear_basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_baskets[user_id] = []
     await update.message.reply_text("🗑️ Ваша корзина очищена.")
 
-# Все заказы
 async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_baskets:
         await update.message.reply_text("Пока никто ничего не заказал.")
@@ -82,7 +81,6 @@ async def all_orders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"\n{name}:\n{orders}\n{summary}\n"
     await update.message.reply_text(text)
 
-# Обработка текстов
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     text = update.message.text
@@ -116,9 +114,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("❓ Не понял. Выбери из меню.")
 
-# Запуск бота
 if __name__ == "__main__":
-    app = Application.builder().token("7864140185:AAHJAg-aEkxT0J4KSHeSJcleuGYDOZ7_1UY").build()
+    app = ApplicationBuilder().token("7864140185:AAHJAg-aEkxT0J4KSHeSJcleuGYDOZ7_1UY").build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("basket", basket))
@@ -126,5 +123,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("allorders", all_orders))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Бот с корзиной, итогом и заказами запущен...")
+    print("Бот запущен...")
     app.run_polling()

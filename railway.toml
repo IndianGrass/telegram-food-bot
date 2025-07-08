@@ -1,0 +1,3 @@
+[service]
+name = "food-bot"
+start = "python food_bot.py"

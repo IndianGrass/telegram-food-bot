@@ -1,202 +1,216 @@
-import asyncio
 import os
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler,
-    MessageHandler, ContextTypes, filters
+import asyncio
+from telegram import (
+    Update, ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 )
-from collections import defaultdict
-from datetime import datetime
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler,
+    ContextTypes, filters, CallbackQueryHandler
+)
+from telegram.constants import ParseMode
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")  # Токен из переменной окружения
 
+# Меню с категориями и блюдами с ценами и мемами (URL котиков)
 MENU = {
-    "🥣 Первое": {
-        "Гороховый суп": "1 поцелуйчик",
-        "Борщ": "2 поцелуйчика",
-        "Супец из Дыни": "3 обнимашки"
+    "🍳 Завтрак": {
+        "Яичница": ("1 поцелуйчик", "https://i.imgur.com/0f7QyKx.jpg"),
+        "Кофе": ("1 обнимашка", "https://i.imgur.com/LzAxGhr.jpg"),
+        "Омлет": ("2 поцелуйчика", "https://i.imgur.com/H07v27c.jpg"),
+        "Шоколадка": ("3 обнимашки", "https://i.imgur.com/DqkshM6.jpg"),
+        "Печенье": ("2 поцелуйчика", "https://i.imgur.com/mj0xFvl.jpg"),
+        "Йогурт": ("1 обнимашка", "https://i.imgur.com/pm7ZwwF.jpg"),
+        "Творог": ("1 поцелуйчик", "https://i.imgur.com/tYl6vhR.jpg"),
+        "Чай с мемами-котиками": ("1 обнимашка", "https://i.imgur.com/svQno44.jpg")
     },
-    "🍗 Второе": {
-        "Жаренная картошечка": "3 поцелуйчика",
-        "Гречка": "2 обнимашки",
-        "Рис": "2 поцелуйчика",
-        "Плов": "3 обнимашки",
-        "Макарошки": "1 поцелуйчик",
-        "Омлет": "2 поцелуйчика"
+    "🥣 Обед": {
+        "Первое": {
+            "Борщ": ("2 поцелуйчика", "https://i.imgur.com/kEYs60V.jpg"),
+            "Гороховый суп": ("1 поцелуйчик", "https://i.imgur.com/NmEjZqA.jpg"),
+            "Супец из Дыни": ("3 обнимашки", "https://i.imgur.com/gSLT2Kp.jpg")
+        },
+        "Второе": {
+            "Рис": ("2 поцелуйчика", "https://i.imgur.com/YzmXS2p.jpg"),
+            "Овощи": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
+            "Гречка": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
+            "Спагетти": ("3 поцелуйчика", "https://i.imgur.com/r4lYb8R.jpg"),
+            "Жаренная картошечка": ("3 поцелуйчика", "https://i.imgur.com/Bsp37fz.jpg"),
+            "Рыбка": ("3 обнимашки", "https://i.imgur.com/IfUpnWn.jpg")
+        }
     },
-    "🥤 Напитки": {
-        "Кофе": "1 обнимашка",
-        "Чай-чай-выручай": "1 поцелуйчик",
-        "Водаааа": "бесплатно 💧"
+    "🌙 Ужин": {
+        "Рис": ("2 поцелуйчика", "https://i.imgur.com/YzmXS2p.jpg"),
+        "Овощи": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
+        "Гречка": ("2 обнимашки", "https://i.imgur.com/VoLU50a.jpg"),
+        "Спагетти": ("3 поцелуйчика", "https://i.imgur.com/r4lYb8R.jpg"),
+        "Жаренная картошечка": ("3 поцелуйчика", "https://i.imgur.com/Bsp37fz.jpg"),
+        "Рыбка": ("3 обнимашки", "https://i.imgur.com/IfUpnWn.jpg")
+    },
+    "🍕 \"Полезная еда\"": {
+        "Пицца": ("1 обнимашка и 3 поцелуя", "https://i.imgur.com/w9L62vK.jpg"),
+        "Чипсики": ("3 поцелуя", "https://i.imgur.com/gd3HbXr.jpg"),
+        "Пивасик": ("1 поцелуй", "https://i.imgur.com/j6Z9vR2.jpg"),
+        "Вино": ("10 поцелуев и 2 обнимашки", "https://i.imgur.com/kG7UMbH.jpg"),
+        "Сходить в рестик": ("50 поцелуйчиков", "https://i.imgur.com/6DLbdx8.jpg")
     }
 }
 
-user_baskets = defaultdict(list)
-order_history = defaultdict(list)
-users = {}
+user_baskets = {}
+order_history = {}
+
+def get_main_keyboard():
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("Старт"), KeyboardButton("Стоп")],
+            [KeyboardButton("🧺 Корзина"), KeyboardButton("🗑️ Очистить корзину")],
+            [KeyboardButton("📜 История заказов")],
+            [KeyboardButton("🔥 ТОП заказчиков")]
+        ],
+        resize_keyboard=True
+    )
 
 def category_keyboard():
-    keyboard = [[KeyboardButton(cat)] for cat in MENU.keys()]
-    keyboard.append([
-        KeyboardButton("🧺 Корзина"),
-        KeyboardButton("🗑️ Очистить корзину")
-    ])
-    keyboard.append([
-        KeyboardButton("📖 История заказов"), KeyboardButton("✅ Оформить заказ")
-    ])
-    keyboard.append([
-        KeyboardButton("🗑️ Удалить блюдо из корзины"), KeyboardButton("🔝 ТОП заказчиков")
-    ])
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    # Категории меню (завтрак, обед, ужин, полезная еда)
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(cat)] for cat in MENU.keys()] + [[KeyboardButton("🔙 Назад")]],
+        resize_keyboard=True
+    )
 
-def count_total(basket_items):
-    kisses, hugs = 0, 0
-    for item in basket_items:
-        if "поцелуйчик" in item:
+def submenu_keyboard(submenu):
+    # Создаёт клавиатуру из словаря блюд
+    return ReplyKeyboardMarkup(
+        [[KeyboardButton(dish)] for dish in submenu.keys()] + [[KeyboardButton("🔙 Назад")]],
+        resize_keyboard=True
+    )
+
+def count_total(items):
+    kisses = 0
+    hugs = 0
+    for item in items:
+        # item как "Яичница — 1 поцелуйчик"
+        parts = item.split("—")
+        if len(parts) < 2:
+            continue
+        price_text = parts[1].strip()
+        # Парсим числа из цены
+        if "обнимашка" in price_text:
             try:
-                kisses += int(item.split()[1])
+                hugs += int(''.join(filter(str.isdigit, price_text)))
             except:
                 pass
-        elif "обнимашк" in item:
+        if "поцелуй" in price_text:
             try:
-                hugs += int(item.split()[1])
+                kisses += int(''.join(filter(str.isdigit, price_text)))
             except:
                 pass
     return kisses, hugs
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Выбери категорию меню 👇", reply_markup=category_keyboard())
-
-async def basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    items = user_baskets.get(user_id, [])
-    if not items:
-        await update.message.reply_text("🧺 Ваша корзина пуста.")
-    else:
-        kisses, hugs = count_total(items)
-        text = "🧺 Ваш заказ:\n" + "\n".join(f"• {item}" for item in items)
-        text += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
-        await update.message.reply_text(text)
-
-async def clear_basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_baskets[user_id] = []
-    await update.message.reply_text("🗑️ Корзина очищена.")
-
-async def show_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    history = order_history.get(user_id, [])
-    if not history:
-        await update.message.reply_text("📭 У вас нет истории заказов.")
-    else:
-        text = "📖 История заказов:\n"
-        for date, items in history:
-            text += f"📅 {date}:\n" + "\n".join(f"• {i}" for i in items) + "\n\n"
-        await update.message.reply_text(text)
-
-async def confirm_order(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    items = user_baskets.get(user_id, [])
-    if not items:
-        await update.message.reply_text("🧺 Сначала добавьте что-нибудь в корзину!")
-        return
-    today = datetime.now().strftime("%Y-%m-%d")
-    order_history[user_id].append((today, items.copy()))
-    user_baskets[user_id] = []
-    await update.message.reply_text("✅ Заказ оформлен и сохранён в истории! 📝")
-
-async def delete_item_from_basket(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    basket = user_baskets.get(user_id, [])
-    if not basket:
-        await update.message.reply_text("🧺 Корзина пуста.")
-        return
-    keyboard = [[KeyboardButton(item)] for item in basket]
-    keyboard.append([KeyboardButton("🔙 Назад")])
-    await update.message.reply_text("Выберите, что удалить:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-    context.user_data['delete_mode'] = True
-
-async def show_top_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stats = []
-    for uid, history in order_history.items():
-        total_kiss, total_hug = 0, 0
-        for _, items in history:
-            k, h = count_total(items)
-            total_kiss += k
-            total_hug += h
-        name = users.get(uid, {}).get("username") or users.get(uid, {}).get("first_name") or f"ID {uid}"
-        stats.append((name, total_kiss, total_hug))
-    if not stats:
-        await update.message.reply_text("Пока нет данных для ТОПа.")
-        return
-    stats.sort(key=lambda x: (x[1], x[2]), reverse=True)
-    text = "🔝 ТОП заказчиков:\n"
-    for i, (name, kiss, hug) in enumerate(stats, 1):
-        text += f"{i}. {name} — 💋 {kiss}, 🤗 {hug}\n"
-    await update.message.reply_text(text)
+    await update.message.reply_text(
+        "Привет! Нажми 'Старт' чтобы открыть меню, или 'Стоп' чтобы остановить бота.",
+        reply_markup=get_main_keyboard()
+    )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    username = update.effective_user.username
-    first_name = update.effective_user.first_name
-    if user_id not in users:
-        users[user_id] = {"username": username, "first_name": first_name}
-
+    username = update.effective_user.username or update.effective_user.first_name or str(user_id)
     text = update.message.text
 
-    if context.user_data.get('delete_mode'):
-        context.user_data['delete_mode'] = False
-        if text == "🔙 Назад":
-            await start(update, context)
-            return
-        try:
-            user_baskets[user_id].remove(text)
-            await update.message.reply_text(f"❌ Удалено: {text}", reply_markup=category_keyboard())
-        except ValueError:
-            await update.message.reply_text("❌ Не удалось удалить. Попробуйте снова.", reply_markup=category_keyboard())
-        return
-
-    if text == "🔙 Назад":
-        await start(update, context)
+    if text == "Старт":
+        await update.message.reply_text("Выбери категорию меню:", reply_markup=category_keyboard())
+    elif text == "Стоп":
+        await update.message.reply_text("Бот остановлен. Для старта нажми 'Старт'.", reply_markup=None)
+    elif text == "🔙 Назад":
+        await update.message.reply_text("Вернулись в главное меню.", reply_markup=get_main_keyboard())
     elif text == "🧺 Корзина":
-        await basket(update, context)
+        items = user_baskets.get(user_id, [])
+        if not items:
+            await update.message.reply_text("🧺 Ваша корзина пуста.")
+        else:
+            kisses, hugs = count_total(items)
+            text_resp = "🧺 Ваш заказ:\n" + "\n".join(f"• {item}" for item in items)
+            text_resp += f"\n\n💋 Поцелуйчиков: {kisses}\n🤗 Обнимашек: {hugs}"
+            await update.message.reply_text(text_resp)
     elif text == "🗑️ Очистить корзину":
-        await clear_basket(update, context)
-    elif text == "📖 История заказов":
-        await show_history(update, context)
-    elif text == "✅ Оформить заказ":
-        await confirm_order(update, context)
-    elif text == "🗑️ Удалить блюдо из корзины":
-        await delete_item_from_basket(update, context)
-    elif text == "🔝 ТОП заказчиков":
-        await show_top_users(update, context)
-    elif text in MENU:
-        dishes = MENU[text]
-        keyboard = [[KeyboardButton(dish)] for dish in dishes]
-        keyboard.append([KeyboardButton("🔙 Назад")])
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(f"Выберите блюдо из категории {text}:", reply_markup=reply_markup)
+        user_baskets[user_id] = []
+        await update.message.reply_text("🗑️ Корзина очищена.")
+    elif text == "📜 История заказов":
+        hist = order_history.get(user_id, [])
+        if not hist:
+            await update.message.reply_text("У вас ещё нет истории заказов.")
+        else:
+            text_resp = "📜 Ваша история заказов:\n" + "\n".join(hist)
+            await update.message.reply_text(text_resp)
+    elif text == "🔥 ТОП заказчиков":
+        # Подсчёт поцелуев и обнимашек по всем юзерам
+        top_users = []
+        for uid, basket in order_history.items():
+            kisses_total, hugs_total = count_total(basket)
+            top_users.append((uid, kisses_total, hugs_total))
+        top_users.sort(key=lambda x: (x[1]+x[2]), reverse=True)
+        text_resp = "🔥 ТОП заказчиков:\n"
+        for i, (uid, kisses_t, hugs_t) in enumerate(top_users[:10], 1):
+            text_resp += f"{i}. Пользователь {uid}: 💋 {kisses_t}, 🤗 {hugs_t}\n"
+        if not top_users:
+            text_resp = "Пока никто не сделал заказов."
+        await update.message.reply_text(text_resp)
+    elif text in MENU.keys():
+        # Категория из основного меню
+        # Если категория Обед — два подкатегории (первое, второе)
+        if text == "🥣 Обед":
+            keyboard = ReplyKeyboardMarkup(
+                [[KeyboardButton("Первое")], [KeyboardButton("Второе")], [KeyboardButton("🔙 Назад")]],
+                resize_keyboard=True
+            )
+            await update.message.reply_text("Выберите подкатегорию Обеда:", reply_markup=keyboard)
+        else:
+            # Простой список блюд в категории
+            dishes = MENU[text]
+            if isinstance(dishes, dict):
+                keyboard = submenu_keyboard(dishes)
+                await update.message.reply_text(f"Выберите блюдо из {text}:", reply_markup=keyboard)
+            else:
+                # на всякий случай
+                await update.message.reply_text("Ошибка структуры меню.")
+    elif text in MENU.get("🥣 Обед", {}).get("Первое", {}):
+        dish = text
+        price, meme_url = MENU["🥣 Обед"]["Первое"][dish]
+        item_str = f"{dish} — {price}"
+        user_baskets.setdefault(user_id, []).append(item_str)
+        order_history.setdefault(user_id, []).append(item_str)
+        await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+    elif text in MENU.get("🥣 Обед", {}).get("Второе", {}):
+        dish = text
+        price, meme_url = MENU["🥣 Обед"]["Второе"][dish]
+        item_str = f"{dish} — {price}"
+        user_baskets.setdefault(user_id, []).append(item_str)
+        order_history.setdefault(user_id, []).append(item_str)
+        await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
     else:
-        for category, items in MENU.items():
-            if text in items:
-                price = items[text]
-                user_baskets[user_id].append(f"{text} — {price}")
-                await update.message.reply_text(f"✅ Добавлено в корзину: {text} ({price})")
-                return
-        await update.message.reply_text("❓ Не понял. Выбери из меню.")
+        # Поиск блюда в остальных категориях
+        found = False
+        for cat, dishes in MENU.items():
+            if isinstance(dishes, dict):
+                for dish, (price, meme_url) in dishes.items():
+                    if dish == text:
+                        item_str = f"{dish} — {price}"
+                        user_baskets.setdefault(user_id, []).append(item_str)
+                        order_history.setdefault(user_id, []).append(item_str)
+                        await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {item_str}")
+                        found = True
+                        break
+            if found:
+                break
+        if not found:
+            await update.message.reply_text("❓ Не понял, выберите из меню.")
 
 async def main():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
     print("🤖 Бот запущен...")
     await app.run_polling()
 
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
-
-    loop = asyncio.get_event_loop()
-    loop.create_task(main())
-    loop.run_forever()
-
+    asyncio.run(main())

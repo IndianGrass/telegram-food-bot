@@ -1,5 +1,6 @@
+import os
 import logging
-import requests
+import aiohttp
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -44,15 +45,19 @@ MENU = {
     }
 }
 
-def get_cat_meme_url(text: str) -> str:
+async def get_cat_meme_url(text: str) -> str:
     url = f"https://cataas.com/cat/says/{text}?json=true"
     try:
-        resp = requests.get(url)
-        resp.raise_for_status()
-        data = resp.json()
-        return "https://cataas.com" + data['url']
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return "https://cataas.com" + data['url']
+                else:
+                    logging.error(f"HTTP error {resp.status} fetching meme")
+                    return None
     except Exception as e:
-        logging.error(f"Ошибка получения мемчика: {e}")
+        logging.error(f"Error fetching meme: {e}")
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,7 +97,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         category = user_data["category"]
         if text in MENU[category]:
             price = MENU[category][text]
-            meme_url = get_cat_meme_url(text)
+            meme_url = await get_cat_meme_url(text)
             if meme_url:
                 await update.message.reply_photo(meme_url, caption=f"✅ Добавлено в корзину: {text} — {price}")
             else:
@@ -103,13 +108,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     import nest_asyncio
     import asyncio
-    from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
     nest_asyncio.apply()
 
-    TOKEN = "ВСТАВЬ СВОЙ ТОКЕН СЮДА"
-    app = ApplicationBuilder().token(TOKEN).build()
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        raise RuntimeError("BOT_TOKEN не установлен в переменных окружения!")
 
+    app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
